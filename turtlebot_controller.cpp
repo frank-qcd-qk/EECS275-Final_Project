@@ -2,9 +2,10 @@
 #include "minimal_turtlebot/turtlebot_controller.h"
 
 
-enum AvoidanceState {MOVING = 1, BACKTRACKING = 2, TURNING = 3, PANIC = 4, WAIT = 5};
+enum AvoidanceState {MOVING = 1, BACKTRACKING = 2, TURNING = 3, PANIC = 4, WAIT = 5, SPINNING = 6};
 AvoidanceState state = MOVING; //the initial state will be MOVING
 bool turningRight = false; //the magic for controlling where the robot is turning
+bool fromGoal = false; //whether the robot is moving to or from the goal
 
 const int TIMEOUTLENGTH = 15; //Set how long will each state run for
 const int MAXIMUM_WAIT = 100;
@@ -13,7 +14,20 @@ int timeInState = 0;
 const float DISTANCE_FOR_FULL_SPEED = 2.0;
 const float SPEED_MULTIPLIER = .2;
 
+const float ROTATION_SPEED = .8;
 
+const float GOAL_ROTATION_TOLERANCE = .05; //TODO: adjust?
+const float GOAL_POSITION_TOLERANCE = .05; //TODO: adjust?
+
+//the goal position we're trying to reach TODO: change these
+const float goalX = 1.0;
+const float goalY = 1.0;
+const float goalZ = 1.0;
+
+//the intermediate goal, either the goal position or the starting point
+float targetX = goalX;
+float targetY = goalY;
+float targetZ = goalZ;
 
 //Different calculated values
 bool testForCollision(turtlebotInputs turtlebot_inputs) //the control for if the collision of bumper happened or not and if so where the robot should turn
@@ -59,7 +73,7 @@ void transitionState(AvoidanceState newState) //Everytime this is called, the ro
 void transitionOnCollision(turtlebotInputs turtlebot_inputs, AvoidanceState newState) //Check if robot collides with anything or not
 {
 	if(testForCollision(turtlebot_inputs))
-	{ 
+	{
 		transitionState(newState);
 	}
 }
@@ -70,6 +84,14 @@ void transitionOnTimeOut(turtlebotInputs turtlebot_inputs, AvoidanceState newSta
 			{
 				transitionState(newState);
 			}
+}
+
+void transitionOnRotations(turtlebotInputs turtlebot_inputs, AvoidanceState newState)
+{
+	if(/*TODO: figure out how to get rotations*/)
+	{
+		transitionState(newState);
+	}
 }
 
 struct LaserData {
@@ -110,9 +132,68 @@ float angularVelocityIntensity(struct LaserData laserData) {
 	int closenessToMiddle = 320 - distanceFromMiddle;
 	float result = (float)closenessToMiddle / 320.0;
 	if (fabs(result) > 1) ROS_INFO("Bug: AVI is %f", result);
-	return result; 
+	return result;
 }
 
+float calculateTranslationalDistanceFromGoal(float currentX, float currentY, float currentZ, float goalX,
+	float goalY, float goalZ)
+{
+	float x = goalX - currentX;
+	float y = goalY - currentY;
+	float z = goalZ - currentZ;
+	return sqrt(x*x + y*y + z*z);
+}
+
+float calculateRotationalDistanceFromGoal(float currentX, float currentY, float currentZ, float goalX,
+	float goalY, float goalZ)
+{
+	//TODO: implement this
+	//difference from the robot's current direction and the goal, quaternion rotation
+}
+
+//TODO: to get it to go back from the goal, call this but with 0, 0, 0 for goal coordinates
+//returns whether it has reached the goal yet
+bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, LaserData laserData,
+	float goalX, float goalY, float goalZ)
+{
+	float rotationalDistanceFromGoal = calculateRotationalDistanceFromGoal(/*args?*/);
+	float translationalDistanceFromGoal = calculateTranslationalDistanceFromGoal(/*args?*/);
+	//1. if it's at the goal, stop
+	if(translationalDistanceFromGoal < GOAL_POSITION_TOLERANCE)
+	{
+		*vel = 0;
+		*ang_vel = 0;
+		return true;
+	}
+
+	//2. set translational and rotational velocity to move towards the goal
+	//if it's not pointing in the right direction, rotate it, otherwise move forward
+	if(rotationalDistanceFromGoal > GOAL_ROTATION_TOLERANCE*translationalDistanceFromGoal)
+	{
+		*ang_vel = (rotationalDistanceFromGoal > 0) ? ROTATION_SPEED : -ROTATION_SPEED;
+	}
+	else
+	{
+		*vel = translationalDistanceFromGoal*SPEED_MULTIPLIER;
+	}
+
+	//3. adjust for obstacles based on their proximity
+	float distance;
+	distance = fmin(laserData.lowest, DISTANCE_FOR_FULL_SPEED);
+	*vel = distance * SPEED_MULTIPLIER;
+
+	if (laserData.lowest < 1.5) {
+		// Swerve
+		turningRight = laserData.lowestIndex > 320;
+		float avi = angularVelocityIntensity(laserData);
+		*ang_vel = turningRight ? avi * -.6 : avi * .6;
+		ROS_INFO("Swerving with ang_vel %f", avi);
+	} else {
+		*ang_vel = 0;
+	}
+
+	return false;
+}
 
 //This is the section where magic all happens, including the switch states and other shits.
 void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue, float *vel, float *ang_vel)
@@ -122,11 +203,11 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 	{
 		transitionState(PANIC);
 	}
-	
+
 	*ang_vel = 0; //Should not change this
-	
+
 	struct LaserData laserData = laserInterpretation(turtlebot_inputs);
-	
+
 	//TODO: we need to add a state called WAIT so that when there is something in front, it will behave like a gentleman.
 	//TODO: we need to modify the state moving to adapt if cloud distance larger than 0.5m, then we use the cloud data to decide the speed, if already, the distance is smaller than 0.5, we should wait, and announce presence.
 	switch(state) {
@@ -136,35 +217,35 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 			if (!laserData.anyGoodData || laserData.lowest < 0.5) {
 				transitionState(WAIT);
 			}
-			float distance;
-			distance = fmin(laserData.lowest, DISTANCE_FOR_FULL_SPEED);
-			*vel = distance * SPEED_MULTIPLIER;
-			
-			if (laserData.lowest < 1.5) {
-				// Swerve
-				turningRight = laserData.lowestIndex > 320;
-				float avi = angularVelocityIntensity(laserData);
-				*ang_vel = turningRight ? avi * -.6 : avi * .6;
-				ROS_INFO("Swerving with ang_vel %f", avi);
-			} else {
-				*ang_vel = 0;
+			if(moveToTarget(turtlebot_inputs, vel, ang_vel, laserData, targetX, targetY, targetZ) && !fromGoal)
+			{
+				fromGoal = true;
+				targetX = 0;
+				targetY = 0;
+				targetZ = 0;
+				transitionState(SPINNING);
 			}
-			
 			break;
 			
+		case SPINNING:
+			*vel = 0;
+			*ang_vel = ROTATION_SPEED;
+			transitionOnRotations(turtlebot_inputs, MOVING);
+			break;
+
 		case BACKTRACKING:
-			*vel = -.2; 
+			*vel = -.2;
 			*ang_vel = 0;
 			transitionOnTimeOut(turtlebot_inputs, TURNING, TIMEOUTLENGTH);
 			break;
-			
+
 		case TURNING:
 			transitionOnCollision(turtlebot_inputs, BACKTRACKING);
 			*vel = 0;
-			*ang_vel = turningRight ? -.8 : .8;
+			*ang_vel = turningRight ? -ROTATION_SPEED : ROTATION_SPEED;
 			transitionOnTimeOut(turtlebot_inputs, MOVING, TIMEOUTLENGTH);
 			break;
-			
+
 		case PANIC:
 			*vel = 0;
 			*ang_vel = 0;
@@ -174,7 +255,7 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 				transitionState(MOVING);
 			}
 			break;
-			
+
 		case WAIT:
 			*vel = 0;
 			*ang_vel = 0;
@@ -185,8 +266,7 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 			transitionOnTimeOut(turtlebot_inputs, TURNING, MAXIMUM_WAIT);
 			break;
 	}
-	
-	
+
+
 
 }
-
