@@ -8,20 +8,21 @@ bool turningRight = false; //the magic for controlling where the robot is turnin
 bool fromGoal = false; //whether the robot is moving to or from the goal
 
 const int TIMEOUTLENGTH = 15; //Set how long will each state run for
-const int MAXIMUM_WAIT = 100;
+const int FOUR_SPINS_TIMEOUT = 400;
+const int MAXIMUM_WAIT = 400;
 int timeInState = 0;
 
 const float DISTANCE_FOR_FULL_SPEED = 2.0;
 const float SPEED_MULTIPLIER = .2;
 
-const float ROTATION_SPEED = .2;
+const float ROTATION_SPEED = .8;
 
-const float GOAL_ROTATION_TOLERANCE = .04; //TODO: adjust?
+const float GOAL_ROTATION_TOLERANCE = .1; //TODO: adjust?
 const float GOAL_POSITION_TOLERANCE = .05; //TODO: adjust?
 
 //the goal position we're trying to reach TODO: change these
-const float goalX = 2.0;
-const float goalY = 2.0;
+const float goalX = -5.0;
+const float goalY =  2.0;
 const float goalZ = 1.0;
 
 //the intermediate goal, either the goal position or the starting point
@@ -32,6 +33,11 @@ float targetZ = goalZ;
 float spinInitialRotation = 0.0;
 float lastRotationValue;
 int spinNumber = 0;
+
+//Returns x, min, or max.  min <= output <= max
+float clamp(float min, float x, float max) {
+	  return std::max(min, std::min(x, max));
+  }
 
 //Different calculated values
 bool testForCollision(turtlebotInputs turtlebot_inputs) //the control for if the collision of bumper happened or not and if so where the robot should turn
@@ -176,8 +182,11 @@ float calculateRotationalDistanceFromGoal(float robotOmega, float robotQuaternio
 	float pitch, yaw, roll;
 	quaternionToZAngle(robotOmega, robotQuaternionZ, roll, pitch, yaw);
 	float goalOrientation = atan2(goalY-currentY, goalX-currentX);
-	ROS_INFO("Omega: %f, Quaternion Z: %f, Yaw: %f, Goal Orientation: %f", robotOmega, robotQuaternionZ, yaw, goalOrientation);
-	return goalOrientation-yaw;
+	float result = goalOrientation-yaw;
+	if (result > M_PI) result -= M_PI * 2;
+	if (result < -M_PI) result += M_PI * 2;
+	ROS_INFO("Yaw: %f, Goal Orientation: %f, Difference: %f", yaw, goalOrientation, result);
+	return result;
 }
 
 //TODO: to get it to go back from the goal, call this but with 0, 0, 0 for goal coordinates
@@ -213,12 +222,14 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 	{
 		//ROS_INFO("rotation is %f; tolerance is %f", rotationalDistanceFromGoal, GOAL_ROTATION_TOLERANCE*translationalDistanceFromGoal);
 		*vel = 0;
-		*ang_vel = (rotationalDistanceFromGoal > 0) ? ROTATION_SPEED : -ROTATION_SPEED;
+		float rotationSpeed = clamp(.25, fabs(rotationalDistanceFromGoal)*.5, .8);
+		*ang_vel = (rotationalDistanceFromGoal > 0) ? rotationSpeed : -rotationSpeed;
 	}
 	else
 	{
-		*vel = translationalDistanceFromGoal*.5*SPEED_MULTIPLIER;
-		*ang_vel = 0;
+		*vel = clamp(.1, translationalDistanceFromGoal*.5*SPEED_MULTIPLIER, .9);
+		float rotationSpeed = clamp(0, fabs(rotationalDistanceFromGoal)*.2, .6);
+		*ang_vel = (rotationalDistanceFromGoal > 0) ? rotationSpeed : -rotationSpeed;
 	}
 	/*
 	//3. adjust for obstacles based on their proximity
@@ -278,7 +289,7 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 		case SPINNING:
 			*vel = 0;
 			*ang_vel = ROTATION_SPEED;
-			transitionOnRotations(turtlebot_inputs, MOVING);
+			transitionOnTimeOut(turtlebot_inputs, MOVING, FOUR_SPINS_TIMEOUT);
 			break;
 
 		case BACKTRACKING:
