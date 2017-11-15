@@ -54,7 +54,7 @@ float calculateAccelerationVectorDegrees(turtlebotInputs turtlebot_inputs) //Cal
 	float z = turtlebot_inputs.linearAccelZ;
 	//ROS_INFO("Acceleration vector is: %f\n", fabs(atan2f(sqrt(x*x + y*y),z)));
 	return fabs(atan2f(sqrt(x*x + y*y),z));
-}
+	}
 
 bool shouldPanic(turtlebotInputs turtlebot_inputs) //Test if the robot meet the standard to run or not
 {
@@ -143,9 +143,11 @@ float angularVelocityIntensity(struct LaserData laserData)
 
 void quaternionToZAngle(float w, float z, float& roll, float& pitch, float& yaw)
 {
+	float x = 0;
+	float y = 0;
 	float sinr = 2*w*x+ 2*y*z;
 	float cosr = 1 - 2*(x*x+y*y);
-	float roll = atan2(sinr, cosr);
+	roll = atan2(sinr, cosr);
 	float sinp = 2*(w*y-z*x);
 	if(fabs(sinp) >= 1)
 	{
@@ -157,7 +159,7 @@ void quaternionToZAngle(float w, float z, float& roll, float& pitch, float& yaw)
 	}
 	float siny = 2*(w*z+x*y);
 	float cosy = 1-2*(y*y+z*z);
-	float yaw = atan2(siny, cosy);
+	yaw = atan2(siny, cosy);
 }
 
 float calculateTranslationalDistanceFromGoal(float currentX, float currentY, float goalX,
@@ -168,12 +170,14 @@ float calculateTranslationalDistanceFromGoal(float currentX, float currentY, flo
 	return sqrt(x*x + y*y);
 }
 
-float calculateRotationalDistanceFromGoal(float robotOmega, float robotQuaternionZ, float currentX, float currentY, float goalX,
-	float goalY)
+float calculateRotationalDistanceFromGoal(float robotOmega, float robotQuaternionZ, float currentX, 
+	float currentY, float goalX, float goalY)
 {
-	float goalOrientation = atanf(goalY-currentY, goalX-currentX);
-	ROS_INFO("Rotation angle: %f; Robot Orientation: %f",goalOrientation,robotOrientation);
-	return goalOrientation-robotOrientation;
+	float pitch, yaw, roll;
+	quaternionToZAngle(robotOmega, robotQuaternionZ, pitch, yaw, roll);
+	float goalOrientation = atan2(goalY-currentY, goalX-currentX);
+	ROS_INFO("Omega: %f, Quaternion Z: %f, Yaw: %f, Goal Orientation: %f", robotOmega, robotQuaternionZ, yaw, goalOrientation);
+	return goalOrientation-yaw;
 }
 
 //TODO: to get it to go back from the goal, call this but with 0, 0, 0 for goal coordinates
@@ -188,10 +192,9 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 	float robotX_rot = 0;
 	float robotY_rot = 0;
 	float robotZ_rot;
-	quaternionToZAngle(turtlebot_inputs.orientation_omega, turtlebot_inputs.z, robotX_rot, robotY_rot, robotZ_rot);
 	float rotationalDistanceFromGoal = calculateRotationalDistanceFromGoal(
-		turtlebot_inputs.orientation_omega, robotZ_rot, turtlebot_inputs.x, turtlebot_inputs.y,
-		targetX, targetY);
+		turtlebot_inputs.orientation_omega, turtlebot_inputs.z_angle, turtlebot_inputs.x, 
+		turtlebot_inputs.y, targetX, targetY);
 	//float currentX, float currentY, float goalX,
 	//float goalY
 	float translationalDistanceFromGoal = calculateTranslationalDistanceFromGoal(
