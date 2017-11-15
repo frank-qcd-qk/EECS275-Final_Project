@@ -61,11 +61,8 @@ bool shouldPanic(turtlebotInputs turtlebot_inputs) //Test if the robot meet the 
 	return (turtlebot_inputs.leftWheelDropped
 	|| turtlebot_inputs.rightWheelDropped
 	|| calculateAccelerationVectorDegrees(turtlebot_inputs)*180/(2*M_PI) > 20.0
-	|| turtlebot_inputs.battVoltage < -5.0);
+	|| turtlebot_inputs.battVoltage < -5.0); //todo:This need to be changed
 }
-
-
-
 
 void transitionState(AvoidanceState newState) //Everytime this is called, the robot will change state!
 {
@@ -111,8 +108,8 @@ struct LaserData {
 	int highestIndex;
 };
 
-//Experimental; Will bite! Refer : http://docs.ros.org/api/sensor_msgs/html/msg/LaserScan.html
-struct LaserData laserInterpretation(turtlebotInputs turtlebot_inputs){
+struct LaserData laserInterpretation(turtlebotInputs turtlebot_inputs)
+{
 	LaserData result;
 	result.lowest = INFINITY;
 	result.lowestIndex = -1;
@@ -135,12 +132,32 @@ struct LaserData laserInterpretation(turtlebotInputs turtlebot_inputs){
 	return result;
 }
 
-float angularVelocityIntensity(struct LaserData laserData) {
+float angularVelocityIntensity(struct LaserData laserData) 
+{
 	int distanceFromMiddle = abs(320 - laserData.lowestIndex);
 	int closenessToMiddle = 320 - distanceFromMiddle;
 	float result = (float)closenessToMiddle / 320.0;
 	if (fabs(result) > 1) ROS_INFO("Bug: AVI is %f", result);
 	return result;
+}
+
+void quaternionToZAngle(float w, float z, float& roll, float& pitch, float& yaw)
+{
+	float sinr = 2*w*x+ 2*y*z;
+	float cosr = 1 - 2*(x*x+y*y);
+	float roll = atan2(sinr, cosr);
+	float sinp = 2*(w*y-z*x);
+	if(fabs(sinp) >= 1)
+	{
+		pitch = copysign(M_PI/2, sinp);
+	}
+	else
+	{
+		pitch = asin(sinp);
+	}
+	float siny = 2*(w*z+x*y);
+	float cosy = 1-2*(y*y+z*z);
+	float yaw = atan2(siny, cosy);
 }
 
 float calculateTranslationalDistanceFromGoal(float currentX, float currentY, float goalX,
@@ -151,10 +168,10 @@ float calculateTranslationalDistanceFromGoal(float currentX, float currentY, flo
 	return sqrt(x*x + y*y);
 }
 
-float calculateRotationalDistanceFromGoal(float robotOrientation, float currentX, float currentY, float goalX,
+float calculateRotationalDistanceFromGoal(float robotOmega, float robotQuaternionZ, float currentX, float currentY, float goalX,
 	float goalY)
 {
-	float goalOrientation = atan2f(goalY-currentY, goalX-currentX);
+	float goalOrientation = atanf(goalY-currentY, goalX-currentX);
 	ROS_INFO("Rotation angle: %f; Robot Orientation: %f",goalOrientation,robotOrientation);
 	return goalOrientation-robotOrientation;
 }
@@ -168,8 +185,12 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 		turtlebot_inputs.x, turtlebot_inputs.y);
 	//float robotOrientation, float currentX, float currentY, float goalX,
 	//float goalY
+	float robotX_rot = 0;
+	float robotY_rot = 0;
+	float robotZ_rot;
+	quaternionToZAngle(turtlebot_inputs.orientation_omega, turtlebot_inputs.z, robotX_rot, robotY_rot, robotZ_rot);
 	float rotationalDistanceFromGoal = calculateRotationalDistanceFromGoal(
-		turtlebot_inputs.orientation_omega, turtlebot_inputs.x, turtlebot_inputs.y,
+		turtlebot_inputs.orientation_omega, robotZ_rot, turtlebot_inputs.x, turtlebot_inputs.y,
 		targetX, targetY);
 	//float currentX, float currentY, float goalX,
 	//float goalY
@@ -188,6 +209,7 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 	if(rotationalDistanceFromGoal > GOAL_ROTATION_TOLERANCE*translationalDistanceFromGoal)
 	{
 		ROS_INFO("rotation is %f; tolerance is %f", rotationalDistanceFromGoal, GOAL_ROTATION_TOLERANCE*translationalDistanceFromGoal);
+		*vel = 0;
 		*ang_vel = (rotationalDistanceFromGoal > 0) ? ROTATION_SPEED : -ROTATION_SPEED;
 	}
 	else
