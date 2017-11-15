@@ -9,7 +9,7 @@ bool fromGoal = false; //whether the robot is moving to or from the goal
 
 const int TIMEOUTLENGTH = 15; //Set how long will each state run for
 const int FOUR_SPINS_TIMEOUT = 400;
-const int MAXIMUM_WAIT = 400;
+const int MAXIMUM_WAIT = 100;
 int timeInState = 0;
 
 const float DISTANCE_FOR_FULL_SPEED = 2.0;
