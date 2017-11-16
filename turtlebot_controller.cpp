@@ -2,26 +2,27 @@
 #include "minimal_turtlebot/turtlebot_controller.h"
 
 
-enum AvoidanceState {MOVING = 1, BACKTRACKING = 2, TURNING = 3, PANIC = 4, WAIT = 5, SPINNING = 6};
+enum AvoidanceState {MOVING = 1, BACKTRACKING = 2, TURNING = 3, PANIC = 4, WAIT = 5, SPINNING = 6, STRAFING = 7};
 AvoidanceState state = MOVING; //the initial state will be MOVING
 bool turningRight = false; //the magic for controlling where the robot is turning
 bool fromGoal = false; //whether the robot is moving to or from the goal
 
 const int TIMEOUTLENGTH = 15; //Set how long will each state run for
+const int FOUR_SPINS_TIMEOUT = 300;
 const int MAXIMUM_WAIT = 100;
 int timeInState = 0;
 
 const float DISTANCE_FOR_FULL_SPEED = 2.0;
 const float SPEED_MULTIPLIER = .2;
 
-const float ROTATION_SPEED = .2;
+const float ROTATION_SPEED = .8;
 
-const float GOAL_ROTATION_TOLERANCE = .04; //TODO: adjust?
+const float GOAL_ROTATION_TOLERANCE = .1; //TODO: adjust?
 const float GOAL_POSITION_TOLERANCE = .05; //TODO: adjust?
 
 //the goal position we're trying to reach TODO: change these
-const float goalX = 2.0;
-const float goalY = 2.0;
+const float goalX = -5.0;
+const float goalY =  2.0;
 const float goalZ = 1.0;
 
 //the intermediate goal, either the goal position or the starting point
@@ -32,6 +33,11 @@ float targetZ = goalZ;
 float spinInitialRotation = 0.0;
 float lastRotationValue;
 int spinNumber = 0;
+
+//Returns x, min, or max.  min <= output <= max
+float clamp(float min, float x, float max) {
+	  return std::max(min, std::min(x, max));
+  }
 
 //Different calculated values
 bool testForCollision(turtlebotInputs turtlebot_inputs) //the control for if the collision of bumper happened or not and if so where the robot should turn
@@ -61,7 +67,9 @@ bool shouldPanic(turtlebotInputs turtlebot_inputs) //Test if the robot meet the 
 	return (turtlebot_inputs.leftWheelDropped
 	|| turtlebot_inputs.rightWheelDropped
 	|| calculateAccelerationVectorDegrees(turtlebot_inputs)*180/(2*M_PI) > 20.0
-	|| turtlebot_inputs.battVoltage < -5.0); //todo:This need to be changed
+	|| turtlebot_inputs.battVoltage < -5.0 //todo:This need to be changed
+	|| isnan(turtlebot_inputs.orientation_omega)
+	|| isnan(turtlebot_inputs.z_angle)); 
 }
 
 void transitionState(AvoidanceState newState) //Everytime this is called, the robot will change state!
@@ -128,7 +136,7 @@ struct LaserData laserInterpretation(turtlebotInputs turtlebot_inputs)
 		}
 	}
 	if (timeInState % 10 == 0) 
-	//ROS_INFO("Highest: %f at %u\nLowest: %f at %u", result.highest,result.highestIndex, result.lowest, result.lowestIndex);
+	ROS_INFO("Highest: %f at %u\nLowest: %f at %u", result.highest,result.highestIndex, result.lowest, result.lowestIndex);
 	return result;
 }
 
@@ -174,10 +182,14 @@ float calculateRotationalDistanceFromGoal(float robotOmega, float robotQuaternio
 	float currentY, float goalX, float goalY)
 {
 	float pitch, yaw, roll;
+	ROS_INFO("OMEGA: %f, QUATERNIONZ: %f", robotOmega, robotQuaternionZ);
 	quaternionToZAngle(robotOmega, robotQuaternionZ, roll, pitch, yaw);
 	float goalOrientation = atan2(goalY-currentY, goalX-currentX);
-	ROS_INFO("Omega: %f, Quaternion Z: %f, Yaw: %f, Goal Orientation: %f", robotOmega, robotQuaternionZ, yaw, goalOrientation);
-	return goalOrientation-yaw;
+	float result = goalOrientation-yaw;
+	if (result > M_PI) result -= M_PI * 2;
+	if (result < -M_PI) result += M_PI * 2;
+	ROS_INFO("Yaw: %f, Goal Orientation: %f, Difference: %f", yaw, goalOrientation, result);
+	return result;
 }
 
 //TODO: to get it to go back from the goal, call this but with 0, 0, 0 for goal coordinates
@@ -211,16 +223,24 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 	//if it's not pointing in the right direction, rotate it, otherwise move forward
 	if(fabs(rotationalDistanceFromGoal) > GOAL_ROTATION_TOLERANCE)
 	{
-		//ROS_INFO("rotation is %f; tolerance is %f", rotationalDistanceFromGoal, GOAL_ROTATION_TOLERANCE*translationalDistanceFromGoal);
+		ROS_INFO("rotation is %f; tolerance is %f", rotationalDistanceFromGoal, GOAL_ROTATION_TOLERANCE);
 		*vel = 0;
-		*ang_vel = (rotationalDistanceFromGoal > 0) ? ROTATION_SPEED : -ROTATION_SPEED;
+		float rotationSpeed = clamp(.25, fabs(rotationalDistanceFromGoal)*.5, .8);
+		*ang_vel = (rotationalDistanceFromGoal > 0) ? rotationSpeed : -rotationSpeed;
 	}
 	else
 	{
-		*vel = translationalDistanceFromGoal*.5*SPEED_MULTIPLIER;
-		*ang_vel = 0;
+		*vel = clamp(.1, translationalDistanceFromGoal*.5*SPEED_MULTIPLIER, .9);
+		float rotationSpeed = clamp(0, fabs(rotationalDistanceFromGoal)*.2, .6);
+		*ang_vel = (rotationalDistanceFromGoal > 0) ? rotationSpeed : -rotationSpeed;
 	}
-	/*
+	
+	/* NOTE:  READ THIS READ THIS READ THIS DON'T MAKE UNNECESSARY CHANGES
+	 * the robot should move parallel to the wall as emergent behavior
+	 * simply by adjusting its angular velocity based on the laser scan
+	 * data
+	 * */
+	
 	//3. adjust for obstacles based on their proximity
 	float distance;
 	distance = fmin(laserData.lowest, DISTANCE_FOR_FULL_SPEED);
@@ -230,12 +250,12 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 		// Swerve
 		turningRight = laserData.lowestIndex > 320;
 		float avi = angularVelocityIntensity(laserData);
-		*ang_vel = turningRight ? avi * -.6 : avi * .6;
+		*ang_vel += turningRight ? avi * .6 : avi * -.6;
 		ROS_INFO("Swerving with ang_vel %f", avi);
 	} else {
-		*ang_vel = 0;
+		//*ang_vel = 0;
 	}
-	*/
+	
 	ROS_INFO("vel: %f, ang_vel: %f", *vel, *ang_vel);
 	return false;
 }
@@ -259,9 +279,11 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 		case MOVING:
 			*soundValue = 5;
 			transitionOnCollision(turtlebot_inputs, BACKTRACKING);
-			if (laserData.lowest < 0.5) {
+			
+			if (laserData.lowest < 1.0) {
 				transitionState(WAIT);
 			}
+			
 			if(moveToTarget(turtlebot_inputs, vel, ang_vel, laserData, targetX, targetY) && !fromGoal)
 			{
 				fromGoal = true;
@@ -278,7 +300,7 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 		case SPINNING:
 			*vel = 0;
 			*ang_vel = ROTATION_SPEED;
-			transitionOnRotations(turtlebot_inputs, MOVING);
+			transitionOnTimeOut(turtlebot_inputs, MOVING, FOUR_SPINS_TIMEOUT);
 			break;
 
 		case BACKTRACKING:
@@ -291,6 +313,13 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 			transitionOnCollision(turtlebot_inputs, BACKTRACKING);
 			*vel = 0;
 			*ang_vel = turningRight ? -ROTATION_SPEED : ROTATION_SPEED;
+			transitionOnTimeOut(turtlebot_inputs, STRAFING, TIMEOUTLENGTH);
+			break;
+		
+		case STRAFING:
+			transitionOnCollision(turtlebot_inputs, BACKTRACKING);
+			*vel = SPEED_MULTIPLIER;
+			*ang_vel = 0;
 			transitionOnTimeOut(turtlebot_inputs, MOVING, TIMEOUTLENGTH);
 			break;
 
@@ -311,7 +340,7 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 			if (laserData.lowest > 0.5) {
 				transitionState(MOVING);
 			}
-			transitionOnTimeOut(turtlebot_inputs, TURNING, MAXIMUM_WAIT);
+			transitionOnTimeOut(turtlebot_inputs, BACKTRACKING, MAXIMUM_WAIT);
 			break;
 	}
 
