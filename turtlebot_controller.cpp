@@ -158,6 +158,7 @@ float angularVelocityIntensity(struct LaserData laserData)
 	return result;
 }
 
+
 void quaternionToZAngle(float w, float z, float& roll, float& pitch, float& yaw)
 {
 	float x = 0;
@@ -220,6 +221,13 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 	//float goalY
 	float translationalDistanceFromGoal = calculateTranslationalDistanceFromGoal(
 		turtlebot_inputs.x, turtlebot_inputs.y, targetX, targetY);
+	
+	
+	//set the velocity and base rotational velocity to move towards the goal
+	*vel = fmin(translationalDistanceFromGoal*SPEED_MULTIPLIER, .5*SPEED_MULTIPLIER);
+	//*vel = clamp(.1, translationalDistanceFromGoal*.5*SPEED_MULTIPLIER, .9);
+	*ang_vel = (rotationalDistanceFromGoal > 0) ? .2 : -.2;
+	
 	//1. if it's at the goal, stop
 	if(translationalDistanceFromGoal < GOAL_POSITION_TOLERANCE)
 	{
@@ -229,45 +237,32 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 	}
 
 	//2. if it's not pointing in the right direction, rotate it
+	float ang_vel_to_goal = 0;
 	if(fabs(rotationalDistanceFromGoal) > GOAL_ROTATION_TOLERANCE)
 	{
 		ROS_INFO("rotation is %f; tolerance is %f", rotationalDistanceFromGoal, GOAL_ROTATION_TOLERANCE);
 		*vel = 0;
 		float rotationSpeed = clamp(.25, fabs(rotationalDistanceFromGoal)*.5, .8);
-		*ang_vel = (rotationalDistanceFromGoal > 0) ? rotationSpeed : -rotationSpeed;
-		return false;
+		ang_vel_to_goal = (rotationalDistanceFromGoal > 0) ? rotationSpeed : -rotationSpeed;
+		//return false;
 	}
 	
-	//3. set the velocity and base rotational velocity to move towards the goal
-	float distance;
-	distance = fmin(laserData.lowest, DISTANCE_FOR_FULL_SPEED);
-	*vel = clamp(.1, translationalDistanceFromGoal*.5*SPEED_MULTIPLIER, .9);
-	*ang_vel = (rotationalDistanceFromGoal > 0) ? .2 : -.2;
+	
 	
 	//3. adjust rotational velocity for obstacles based on their proximity
-	if(distance < DISTANCE_TO_STEER_AWAY)
+	float ang_vel_from_obstacle = 0;
+	if(laserData.lowest < DISTANCE_TO_STEER_AWAY)
 	{
-		
-		//float rotationSpeed = clamp(0, fabs(rotationalDistanceFromGoal)*.2, .6);
-		
-		/* NOTE:  READ THIS READ THIS READ THIS DON'T MAKE UNNECESSARY CHANGES
-		* the robot should move parallel to the wall as emergent behavior
-		* simply by adjusting its angular velocity based on the laser scan
-		* data
-		* */
-
-		//*vel += distance * SPEED_MULTIPLIER;
-
-		// Swerve
-		turningRight = laserData.lowestIndex > 320;
-		float avi = angularVelocityIntensity(laserData);
-		*ang_vel += turningRight ? avi * 1.6 : avi * -1.6;
-		ROS_INFO("Swerving with ang_vel %f", avi);
+		ang_vel_from_obstacle = .8;
 	
-		ROS_INFO("vel: %f, ang_vel: %f", *vel, *ang_vel);
 	}
 	
+	//set ang_vel to the weighted average of influences
+	float weighted_ang_vel_from_obstacle = clamp(0, ang_vel_from_obstacle/laserData.lowest, 1);
+	float weighted_ang_vel_to_goal = 1-weighted_ang_vel_from_obstacle;
+	*ang_vel = (weighted_ang_vel_from_obstacle + weighted_ang_vel_to_goal*ang_vel_to_goal);
 	
+	ROS_INFO("vel: %f, ang_vel: %f", *vel, *ang_vel);
 	return false;
 }
 
@@ -293,7 +288,7 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 			*soundValue = 5;
 			transitionOnCollision(turtlebot_inputs, BACKTRACKING);
 			
-			if (laserData.lowest < 1.0) {
+			if (laserData.lowest < .5) {
 				transitionState(WAIT);
 			}
 			
