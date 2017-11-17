@@ -12,6 +12,7 @@ const int FOUR_SPINS_TIMEOUT = 300;
 const int MAXIMUM_WAIT = 100;
 int timeInState = 0;
 
+const float DISTANCE_TO_STEER_AWAY = 1.0;
 const float DISTANCE_FOR_FULL_SPEED = 2.0;
 const float SPEED_MULTIPLIER = .2;
 
@@ -76,7 +77,6 @@ void transitionState(AvoidanceState newState) //Everytime this is called, the ro
 {
 	state = newState;
 	timeInState = 0;
-	ROS_INFO("state is: %u",newState);
 }
 
 void transitionOnCollision(turtlebotInputs turtlebot_inputs, AvoidanceState newState) //Check if robot collides with anything or not
@@ -140,10 +140,19 @@ struct LaserData laserInterpretation(turtlebotInputs turtlebot_inputs)
 	return result;
 }
 
+/*	THE PROBLEM IS THAT ANGULARVELOCITYINTENSITY RETURNS ZERO, SO THE
+ * 	ROBOT DOES NOT TURN TO AVOID OBSTACLES BECAUSE IT SWERVES WITH ANGULAR
+ *  VELOCITY OF 0.  I would fix this myself, but
+ * 	I don't know if 320 is just a magic number or where it comes from.
+ * 	THIS IS THE PART WE NEED TO FIX.  ONCE WE FIX THIS, IT WILL STEER
+ * 	AWAY FROM OBSTACLES WITHIN A CERTAIN RANGE AND STEER TOWARDS THE
+ * 	GOAL IF NO OBSTACLES ARE IN SIGHT
+ * */
 float angularVelocityIntensity(struct LaserData laserData) 
 {
 	int distanceFromMiddle = abs(320 - laserData.lowestIndex);
 	int closenessToMiddle = 320 - distanceFromMiddle;
+	ROS_INFO("CLOSENESS TO MIDDLE: %u", closenessToMiddle);
 	float result = (float)closenessToMiddle / 320.0;
 	if (fabs(result) > 1) //ROS_INFO("Bug: AVI is %f", result);
 	return result;
@@ -219,44 +228,46 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 		return true;
 	}
 
-	//2. set translational and rotational velocity to move towards the goal
-	//if it's not pointing in the right direction, rotate it, otherwise move forward
+	//2. if it's not pointing in the right direction, rotate it
 	if(fabs(rotationalDistanceFromGoal) > GOAL_ROTATION_TOLERANCE)
 	{
 		ROS_INFO("rotation is %f; tolerance is %f", rotationalDistanceFromGoal, GOAL_ROTATION_TOLERANCE);
 		*vel = 0;
 		float rotationSpeed = clamp(.25, fabs(rotationalDistanceFromGoal)*.5, .8);
 		*ang_vel = (rotationalDistanceFromGoal > 0) ? rotationSpeed : -rotationSpeed;
-	}
-	else
-	{
-		*vel = clamp(.1, translationalDistanceFromGoal*.5*SPEED_MULTIPLIER, .9);
-		float rotationSpeed = clamp(0, fabs(rotationalDistanceFromGoal)*.2, .6);
-		*ang_vel = (rotationalDistanceFromGoal > 0) ? rotationSpeed : -rotationSpeed;
+		return false;
 	}
 	
-	/* NOTE:  READ THIS READ THIS READ THIS DON'T MAKE UNNECESSARY CHANGES
-	 * the robot should move parallel to the wall as emergent behavior
-	 * simply by adjusting its angular velocity based on the laser scan
-	 * data
-	 * */
-	
-	//3. adjust for obstacles based on their proximity
+	//3. set the velocity and base rotational velocity to move towards the goal
 	float distance;
 	distance = fmin(laserData.lowest, DISTANCE_FOR_FULL_SPEED);
-	*vel = distance * SPEED_MULTIPLIER;
+	*vel = clamp(.1, translationalDistanceFromGoal*.5*SPEED_MULTIPLIER, .9);
+	*ang_vel = (rotationalDistanceFromGoal > 0) ? .2 : -.2;
+	
+	//3. adjust rotational velocity for obstacles based on their proximity
+	if(distance < DISTANCE_TO_STEER_AWAY)
+	{
+		
+		//float rotationSpeed = clamp(0, fabs(rotationalDistanceFromGoal)*.2, .6);
+		
+		/* NOTE:  READ THIS READ THIS READ THIS DON'T MAKE UNNECESSARY CHANGES
+		* the robot should move parallel to the wall as emergent behavior
+		* simply by adjusting its angular velocity based on the laser scan
+		* data
+		* */
 
-	if (laserData.lowest < 1.5) {
+		//*vel += distance * SPEED_MULTIPLIER;
+
 		// Swerve
 		turningRight = laserData.lowestIndex > 320;
 		float avi = angularVelocityIntensity(laserData);
-		*ang_vel += turningRight ? avi * .6 : avi * -.6;
+		*ang_vel += turningRight ? avi * 1.6 : avi * -1.6;
 		ROS_INFO("Swerving with ang_vel %f", avi);
-	} else {
-		//*ang_vel = 0;
+	
+		ROS_INFO("vel: %f, ang_vel: %f", *vel, *ang_vel);
 	}
 	
-	ROS_INFO("vel: %f, ang_vel: %f", *vel, *ang_vel);
+	
 	return false;
 }
 
@@ -264,6 +275,8 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue, float *vel, float *ang_vel)
  {
 	//General Start of the program
+	ROS_INFO("state is: %u",state);
+	
 	if(shouldPanic(turtlebot_inputs))
 	{
 		transitionState(PANIC);
@@ -343,7 +356,5 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 			transitionOnTimeOut(turtlebot_inputs, BACKTRACKING, MAXIMUM_WAIT);
 			break;
 	}
-
-
-
+	
 }
