@@ -2,7 +2,7 @@
 #include "minimal_turtlebot/turtlebot_controller.h"
 
 
-enum AvoidanceState {MOVING = 1, BACKTRACKING = 2, TURNING = 3, PANIC = 4, WAIT = 5, SPINNING = 6, STRAFING = 7};
+enum AvoidanceState {MOVING = 1, BACKTRACKING = 2, TURNING = 3, PANIC = 4, WAIT = 5, SPINNING = 6, STRAFING = 7, WALL_FOLLOWING = 8};
 AvoidanceState state = MOVING; //the initial state will be MOVING
 bool turningRight = false; //the magic for controlling where the robot is turning
 bool fromGoal = false; //whether the robot is moving to or from the goal
@@ -12,7 +12,8 @@ const int FOUR_SPINS_TIMEOUT = 300;
 const int MAXIMUM_WAIT = 100;
 int timeInState = 0;
 
-const float DISTANCE_TO_STEER_AWAY = 1.0;
+const float DISTANCE_TO_WALL_FOLLOW = 1.0;
+const float DISTANCE_TO_STEER_AWAY = 2.0;
 const float DISTANCE_FOR_FULL_SPEED = 2.0;
 const float SPEED_MULTIPLIER = .2;
 
@@ -30,6 +31,10 @@ const float goalZ = 1.0;
 float targetX = goalX;
 float targetY = goalY;
 float targetZ = goalZ;
+
+float wallFollowEntrySlope;
+int wallFollowTime = 0;
+
 
 float spinInitialRotation = 0.0;
 float lastRotationValue;
@@ -234,35 +239,70 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 		*vel = 0;
 		*ang_vel = 0;
 		return true;
-	}
+	}turningRight
 
 	//2. if it's not pointing in the right direction, rotate it
 	float ang_vel_to_goal = 0;
 	if(fabs(rotationalDistanceFromGoal) > GOAL_ROTATION_TOLERANCE)
 	{
 		ROS_INFO("rotation is %f; tolerance is %f", rotationalDistanceFromGoal, GOAL_ROTATION_TOLERANCE);
-		*vel = 0;
-		float rotationSpeed = clamp(.25, fabs(rotationalDistanceFromGoal)*.5, .8);
+		//*vel = 0;
+		float rotationSpeed = .5; // = clamp(.25, fabs(rotationalDistanceFromGoal)*.5, .8);
 		ang_vel_to_goal = (rotationalDistanceFromGoal > 0) ? rotationSpeed : -rotationSpeed;
 		//return false;
 	}
 	
 	
 	
-	//3. adjust rotational velocity for obstacles based on their proximity
-	float ang_vel_from_obstacle = 0;
-	if(laserData.lowest < DISTANCE_TO_STEER_AWAY)
-	{
-		ang_vel_from_obstacle = .8;
-	
-	}
+	//3. adjust rotational velocturningRightity for obstacles based on their proximity
+	//float ang_vel_from_obstacle = 0;
+	//if(laserData.lowest < DISTANCE_TO_STEER_AWAY)
+	//{
+	//	ang_vel_from_obstacle = .5;
+	//}
 	
 	//set ang_vel to the weighted average of influences
-	float weighted_ang_vel_from_obstacle = clamp(0, ang_vel_from_obstacle/laserData.lowest, 1);
+	float weighted_ang_vel_from_obstacle = 0;//clamp(0, ang_vel_from_obstacle/laserData.lowest, 1);
 	float weighted_ang_vel_to_goal = 1-weighted_ang_vel_from_obstacle;
 	*ang_vel = (weighted_ang_vel_from_obstacle + weighted_ang_vel_to_goal*ang_vel_to_goal);
 	
-	ROS_INFO("vel: %f, ang_vel: %f", *vel, *ang_vel);
+	//4. if there's an obstacle in the way, wall follow it
+	if(laserData.lowest < DISTANCE_TO_WALL_FOLLOW)
+	{
+		wallFollowTime = 0;
+		wallFollowEntrySlope = (goalY-turtlebot_inputs.y)/(goalX-turtlebot_inputs.x);
+		transitionState(WALL_FOLLOWING);
+	}
+	
+	ROS_INFO("vel: %f, ang_vel: %f", turningRight*vel, *ang_vel);
+	return false;
+}
+
+bool followWall(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, LaserData laserData,
+	float goalX, float goalY)
+{
+	wallFollowTime++;
+	float non_directional_ang_vel = .5;
+	*vel = .3;
+	//if there's nothing in the way, turn back to the obstacle
+	if(laserData.lowest > DISTANCE_TO_WALL_FOLLOW)
+	{
+		*ang_vel = non_directional_ang_vel;
+	}
+	//otherwise, turn away from it
+	else
+	{
+		*ang_vel = -non_directional_ang_vel;
+	}
+	//check to see if we're on the other side
+	if(fabs((goalY-turtlebot_inputs.y)/(goalX-turtlebot_inputs.x) - wallFollowEntrySlope) < GOAL_POSITION_TOLERANCE
+		&& wallFollowTime > 50)
+	{
+		transitionState(MOVING);
+	}
+	ROS_INFO("target is %f, %f; current position is %f, %f", goalX, goalY,
+		turtlebot_inputs.x, turtlebot_inputs.y);
+		ROS_INFO("vel: %f, ang_vel: %f", *vel, *ang_vel);
 	return false;
 }
 
@@ -329,6 +369,17 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 			*vel = SPEED_MULTIPLIER;
 			*ang_vel = 0;
 			transitionOnTimeOut(turtlebot_inputs, MOVING, TIMEOUTLENGTH);
+			break;
+		
+		case WALL_FOLLOWING:
+			transitionOnCollision(turtlebot_inputs, BACKTRACKING);
+			if (laserData.lowest < .5) {
+				transitionState(WAIT);
+			}
+			if(followWall(turtlebot_inputs, vel, ang_vel, laserData, targetX, targetY))
+			{
+				transitionState(MOVING);
+			}
 			break;
 
 		case PANIC:
