@@ -81,7 +81,7 @@ float calculateAccelerationVectorDegrees(turtlebotInputs turtlebot_inputs) //Cal
 
 bool shouldPanic(turtlebotInputs turtlebot_inputs) //Test if the robot meet the standard to run or not
 {
-	return (turtlebot_inputs.leftWheelDropped || turtlebot_inputs.rightWheelDropped || calculateAccelerationVectorDegrees(turtlebot_inputs) * 180 / (2 * M_PI) > 20.0 || turtlebot_inputs.battVoltage < -5.0 //todo:This need to be changed
+	return (turtlebot_inputs.leftWheelDropped || turtlebot_inputs.rightWheelDropped || calculateAccelerationVectorDegrees(turtlebot_inputs) * 180 / (2 * M_PI) > 20.0 || turtlebot_inputs.battVoltage < -0.0 
 			|| isnan(turtlebot_inputs.orientation_omega) || isnan(turtlebot_inputs.z_angle));
 }
 
