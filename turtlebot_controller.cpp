@@ -12,7 +12,9 @@ enum AvoidanceState
 	STRAFING = 7,
 	WALL_FOLLOWING = 8
 };
-AvoidanceState state = MOVING; //the initial state will be MOVING
+
+AvoidanceState state = PANIC; //the initial state should be Panic, robot should not drive unless the enviornment is cleared.
+
 bool turningRight = false;	 //the magic for controlling where the robot is turning
 bool fromGoal = false;		   //whether the robot is moving to or from the goal
 
