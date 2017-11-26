@@ -4,6 +4,7 @@
 //TODO: 
 /*
 1. combine testForCollision into transitionOnCollision
+2. double check FOUR_SPINS_TIMEOUT
 */
 
 //State definitions
@@ -22,14 +23,16 @@ enum AvoidanceState
 AvoidanceState state = PANIC;
 
 //Variable for robot steering
-bool turningRight = false; //Robot Turn direction controll
+bool turningRight = false;
 const float SPEED_MULTIPLIER = .2;
 const float ROTATION_SPEED = .8;
 
 //Variable for robot time control
-const int TIMEOUTLENGTH = 15; //Set how long will each state run for
+const int TIMEOUTLENGTH = 15;
+const int BACKTRACKING_TIME = 15;
+const int TURNING_TIME = 15;
 const int FOUR_SPINS_TIMEOUT = 300;
-const int MAXIMUM_WAIT = 100;
+const int MAXIMUM_WAIT = 15;
 int timeInState = 0;
 
 //Varibale for goal seeking
@@ -316,11 +319,14 @@ bool followWall(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, La
 	return false;
 }
 
-//This is the section where magic all happens, including the switch states and other shits.
+
+
+
+
+//MAIN STRUCTURE START FROM HERE:
 void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue, float *vel, float *ang_vel)
 {
-	//General Start of the program
-	ROS_INFO("state is: %u", state);
+	ROS_INFO("Current state is: %u", state);
 
 	if (shouldPanic(turtlebot_inputs))
 	{
@@ -329,15 +335,13 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 
 	struct LaserData laserData = laserInterpretation(turtlebot_inputs);
 
-	//TODO: we need to add a state called WAIT so that when there is something in front, it will behave like a gentleman.
-	//TODO: we need to modify the state moving to adapt if cloud distance larger than 0.5m, then we use the cloud data to decide the speed, if already, the distance is smaller than 0.5, we should wait, and announce presence.
 	switch (state)
 	{
 	case MOVING:
 		*soundValue = 5;
 		transitionOnCollision(turtlebot_inputs, BACKTRACKING);
 
-		if (laserData.lowest < .5)
+		if (laserData.lowest < .5) //TODO: The logic of entering wait need to be modified since we don't want robot stop when it is glancing the side object.
 		{
 			transitionState(WAIT);
 		}
@@ -364,14 +368,14 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 	case BACKTRACKING:
 		*vel = -.2;
 		*ang_vel = 0;
-		transitionOnTimeOut(turtlebot_inputs, TURNING, TIMEOUTLENGTH);
+		transitionOnTimeOut(turtlebot_inputs, TURNING, BACKTRACKING_TIME);
 		break;
 
 	case TURNING:
 		transitionOnCollision(turtlebot_inputs, BACKTRACKING);
 		*vel = 0;
 		*ang_vel = turningRight ? -ROTATION_SPEED : ROTATION_SPEED;
-		transitionOnTimeOut(turtlebot_inputs, STRAFING, TIMEOUTLENGTH);
+		transitionOnTimeOut(turtlebot_inputs, STRAFING, TURNING_TIME);
 		break;
 
 	case STRAFING:
