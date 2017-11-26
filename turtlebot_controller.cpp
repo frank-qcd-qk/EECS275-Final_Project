@@ -25,7 +25,7 @@ int timeInState = 0;
 
 const float DISTANCE_TO_WALL_FOLLOW = 1.0;
 const float DISTANCE_TO_STEER_AWAY = 2.0;
-const float DISTANCE_FOR_FULL_SPEED = 2.0;
+const float DISTANCE_FOR_FULL_SPEED = 2.5;
 const float SPEED_MULTIPLIER = .2;
 
 const float ROTATION_SPEED = .8;
