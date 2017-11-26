@@ -116,6 +116,7 @@ void transitionOnTimeOut(turtlebotInputs turtlebot_inputs, AvoidanceState newSta
 	}
 }
 
+/*
 void transitionOnRotations(turtlebotInputs turtlebot_inputs, AvoidanceState newState)
 {
 	float currentRotation = turtlebot_inputs.orientation_omega;
@@ -129,6 +130,7 @@ void transitionOnRotations(turtlebotInputs turtlebot_inputs, AvoidanceState newS
 	}
 	lastRotationValue = currentRotation;
 }
+*/
 
 struct LaserData
 {
