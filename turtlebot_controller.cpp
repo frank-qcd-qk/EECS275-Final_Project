@@ -5,6 +5,7 @@
 /*
 1. combine testForCollision into transitionOnCollision
 2. double check FOUR_SPINS_TIMEOUT
+3. Modify strafe logic
 */
 
 //State definitions
