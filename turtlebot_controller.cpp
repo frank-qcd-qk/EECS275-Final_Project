@@ -1,6 +1,11 @@
 #include <math.h>
 #include "minimal_turtlebot/turtlebot_controller.h"
 
+//TODO: 
+/*
+1. combine testForCollision into transitionOnCollision
+*/
+
 //State definitions
 enum AvoidanceState
 {
@@ -18,8 +23,6 @@ AvoidanceState state = PANIC;
 
 //Variable for robot steering
 bool turningRight = false; //Robot Turn direction controll
-
-//Variable for robot speeds.
 const float SPEED_MULTIPLIER = .2;
 const float ROTATION_SPEED = .8;
 
@@ -54,26 +57,9 @@ float wallFollowEntrySlope;
 int wallFollowTime = 0;
 
 
-//Returns x, min, or max.  min <= output <= max
-float clamp(float min, float x, float max)
+float clamp(float min, float x, float max)//Returns x, min, or max.  min <= output <= max
 {
 	return std::max(min, std::min(x, max));
-}
-
-//Different calculated values
-bool testForCollision(turtlebotInputs turtlebot_inputs) //the control for if the collision of bumper happened or not and if so where the robot should turn
-{
-	if (turtlebot_inputs.leftBumperPressed || turtlebot_inputs.sensor0State)
-	{
-		turningRight = true;
-		return true;
-	}
-	if (turtlebot_inputs.rightBumperPressed || turtlebot_inputs.sensor2State)
-	{
-		turningRight = false;
-		return true;
-	}
-	return turtlebot_inputs.centerBumperPressed || turtlebot_inputs.sensor1State;
 }
 
 float calculateAccelerationVectorDegrees(turtlebotInputs turtlebot_inputs) //Calculates the robot final acceleration vector
@@ -90,13 +76,28 @@ bool shouldPanic(turtlebotInputs turtlebot_inputs) //Test if the robot meet the 
 	return (turtlebot_inputs.leftWheelDropped || turtlebot_inputs.rightWheelDropped || calculateAccelerationVectorDegrees(turtlebot_inputs) * 180 / (2 * M_PI) > 20.0 || turtlebot_inputs.battVoltage < -0.0 || isnan(turtlebot_inputs.orientation_omega) || isnan(turtlebot_inputs.z_angle));
 }
 
-void transitionState(AvoidanceState newState) //Everytime this is called, the robot will change state!
+void transitionState(AvoidanceState newState) //Everytime this is called, the robot will change state; state timer will reset
 {
 	state = newState;
 	timeInState = 0;
 }
 
-void transitionOnCollision(turtlebotInputs turtlebot_inputs, AvoidanceState newState) //Check if robot collides with anything or not
+bool testForCollision(turtlebotInputs turtlebot_inputs) //the control for if the collision of bumper happened or not and if so where the robot should turn
+{
+	if (turtlebot_inputs.leftBumperPressed || turtlebot_inputs.sensor0State)
+	{
+		turningRight = true;
+		return true;
+	}
+	if (turtlebot_inputs.rightBumperPressed || turtlebot_inputs.sensor2State)
+	{
+		turningRight = false;
+		return true;
+	}
+	return turtlebot_inputs.centerBumperPressed || turtlebot_inputs.sensor1State;
+}
+
+void transitionOnCollision(turtlebotInputs turtlebot_inputs, AvoidanceState newState) //Check if robot collides with anything or not, and call bool testForCollision
 {
 	if (testForCollision(turtlebot_inputs))
 	{
@@ -104,7 +105,7 @@ void transitionOnCollision(turtlebotInputs turtlebot_inputs, AvoidanceState newS
 	}
 }
 
-void transitionOnTimeOut(turtlebotInputs turtlebot_inputs, AvoidanceState newState, int timeOutLength) //Counts how long it has been in this state.
+void transitionOnTimeOut(turtlebotInputs turtlebot_inputs, AvoidanceState newState, int timeOutLength) //Counts how long it has been in this state; If it is larger than timeOutLength, then force to a new state.
 {
 	if (timeInState++ >= timeOutLength)
 	{
