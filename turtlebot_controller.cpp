@@ -116,23 +116,7 @@ void transitionOnTimeOut(turtlebotInputs turtlebot_inputs, AvoidanceState newSta
 	}
 }
 
-/*
-void transitionOnRotations(turtlebotInputs turtlebot_inputs, AvoidanceState newState)
-{
-	float currentRotation = turtlebot_inputs.orientation_omega;
-	if (currentRotation < lastRotationValue)
-	{
-		spinNumber++;
-		if (spinNumber > 4)
-		{
-			transitionState(newState);
-		}
-	}
-	lastRotationValue = currentRotation;
-}
-*/
-
-struct LaserData
+struct LaserData //Laser struct declaration names
 {
 	float lowest;
 	int lowestIndex;
@@ -140,7 +124,7 @@ struct LaserData
 	int highestIndex;
 };
 
-struct LaserData laserInterpretation(turtlebotInputs turtlebot_inputs)
+struct LaserData laserInterpretation(turtlebotInputs turtlebot_inputs) //Laser data value treatment
 {
 	LaserData result;
 	result.lowest = INFINITY;
@@ -177,6 +161,22 @@ float angularVelocityIntensity(struct LaserData laserData)
 	float result = (float)closenessToMiddle / 320.0;
 	if (fabs(result) > 1) //ROS_INFO("Bug: AVI is %f", result);
 		return result;
+}
+*/
+
+/*
+void transitionOnRotations(turtlebotInputs turtlebot_inputs, AvoidanceState newState)
+{
+	float currentRotation = turtlebot_inputs.orientation_omega;
+	if (currentRotation < lastRotationValue)
+	{
+		spinNumber++;
+		if (spinNumber > 4)
+		{
+			transitionState(newState);
+		}
+	}
+	lastRotationValue = currentRotation;
 }
 */
 
