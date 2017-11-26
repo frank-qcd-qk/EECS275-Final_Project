@@ -163,14 +163,7 @@ struct LaserData laserInterpretation(turtlebotInputs turtlebot_inputs)
 	return result;
 }
 
-/*	THE PROBLEM IS THAT ANGULARVELOCITYINTENSITY RETURNS ZERO, SO THE
- * 	ROBOT DOES NOT TURN TO AVOID OBSTACLES BECAUSE IT SWERVES WITH ANGULAR
- *  VELOCITY OF 0.  I would fix this myself, but
- * 	I don't know if 320 is just a magic number or where it comes from.
- * 	THIS IS THE PART WE NEED TO FIX.  ONCE WE FIX THIS, IT WILL STEER
- * 	AWAY FROM OBSTACLES WITHIN A CERTAIN RANGE AND STEER TOWARDS THE
- * 	GOAL IF NO OBSTACLES ARE IN SIGHT
- * */
+/*
 float angularVelocityIntensity(struct LaserData laserData)
 {
 	int distanceFromMiddle = abs(320 - laserData.lowestIndex);
@@ -180,6 +173,7 @@ float angularVelocityIntensity(struct LaserData laserData)
 	if (fabs(result) > 1) //ROS_INFO("Bug: AVI is %f", result);
 		return result;
 }
+*/
 
 void quaternionToZAngle(float w, float z, float &roll, float &pitch, float &yaw)
 {
