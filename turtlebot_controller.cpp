@@ -122,6 +122,8 @@ struct LaserData //Laser struct declaration names
 	int lowestIndex;
 	float highest;
 	int highestIndex;
+	float leftSum;
+	float rightSum;
 };
 
 struct LaserData laserInterpretation(turtlebotInputs turtlebot_inputs) //Laser data value treatment
@@ -136,6 +138,12 @@ struct LaserData laserInterpretation(turtlebotInputs turtlebot_inputs) //Laser d
 		float current = turtlebot_inputs.ranges[i];
 		if (isnan(current))
 			continue;
+		if (i<320)
+		{
+			result.rightSum += current;
+		}	else {
+			result.leftSum += current;
+		}
 		if (current < result.lowest)
 		{
 			result.lowest = current;
@@ -147,8 +155,11 @@ struct LaserData laserInterpretation(turtlebotInputs turtlebot_inputs) //Laser d
 			result.highestIndex = i;
 		}
 	}
+	//Debug section
 	if (timeInState % 10 == 0)
 		ROS_INFO("Highest: %f at %u\nLowest: %f at %u", result.highest, result.highestIndex, result.lowest, result.lowestIndex);
+		ROS_INFO("Left: %f \nRight: %f",result.leftSum,result.leftSum);
+	//End Debug output
 	return result;
 }
 
@@ -180,7 +191,7 @@ void transitionOnRotations(turtlebotInputs turtlebot_inputs, AvoidanceState newS
 }
 */
 
-void quaternionToZAngle(float w, float z, float &roll, float &pitch, float &yaw)
+void quaternionToZAngle(float w, float z, float &roll, float &pitch, float &yaw) //Use odometer convert angle
 {
 	float x = 0;
 	float y = 0;
@@ -225,8 +236,6 @@ float calculateRotationalDistanceFromGoal(float robotOmega, float robotQuaternio
 	return result;
 }
 
-//TODO: to get it to go back from the goal, call this but with 0, 0, 0 for goal coordinates
-//returns whether it has reached the goal yet
 bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, LaserData laserData,
 				  float goalX, float goalY)
 {
