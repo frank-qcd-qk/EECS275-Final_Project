@@ -1,6 +1,7 @@
 #include <math.h>
 #include "minimal_turtlebot/turtlebot_controller.h"
 
+//State definitions
 enum AvoidanceState
 {
 	MOVING = 1,
@@ -13,7 +14,7 @@ enum AvoidanceState
 	WALL_FOLLOWING = 8
 };
 
-AvoidanceState state = PANIC; //the initial state should be Panic, robot should not drive unless the enviornment is cleared.
+AvoidanceState state = PANIC;
 
 bool turningRight = false;	 //the magic for controlling where the robot is turning
 bool fromGoal = false;		   //whether the robot is moving to or from the goal
@@ -328,8 +329,6 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 	{
 		transitionState(PANIC);
 	}
-
-	*ang_vel = 0; //Should not change this
 
 	struct LaserData laserData = laserInterpretation(turtlebot_inputs);
 
