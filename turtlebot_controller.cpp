@@ -16,40 +16,43 @@ enum AvoidanceState
 
 AvoidanceState state = PANIC;
 
-bool turningRight = false;	 //the magic for controlling where the robot is turning
-bool fromGoal = false;		   //whether the robot is moving to or from the goal
+//Variable for robot steering
+bool turningRight = false; //Robot Turn direction controll
 
+//Variable for robot speeds.
+const float SPEED_MULTIPLIER = .2;
+const float ROTATION_SPEED = .8;
+
+//Variable for robot time control
 const int TIMEOUTLENGTH = 15; //Set how long will each state run for
 const int FOUR_SPINS_TIMEOUT = 300;
 const int MAXIMUM_WAIT = 100;
 int timeInState = 0;
 
-const float DISTANCE_TO_WALL_FOLLOW = 1.0;
-const float DISTANCE_TO_STEER_AWAY = 2.0;
-const float DISTANCE_FOR_FULL_SPEED = 2.5;
-const float SPEED_MULTIPLIER = .2;
-
-const float ROTATION_SPEED = .8;
-
-const float GOAL_ROTATION_TOLERANCE = .1;  //TODO: adjust?
-const float GOAL_POSITION_TOLERANCE = .05; //TODO: adjust?
-
-//the goal position we're trying to reach TODO: change these
+//Varibale for goal seeking
+bool fromGoal = false; //Define the robot is moving to or from the goal
+const float GOAL_ROTATION_TOLERANCE = .1;
+const float GOAL_POSITION_TOLERANCE = .05;
+//Goal position
 const float goalX = -5.0;
 const float goalY = 2.0;
 const float goalZ = 1.0;
-
 //the intermediate goal, either the goal position or the starting point
 float targetX = goalX;
 float targetY = goalY;
 float targetZ = goalZ;
-
-float wallFollowEntrySlope;
-int wallFollowTime = 0;
-
+//Rpbot spin control
 float spinInitialRotation = 0.0;
 float lastRotationValue;
 int spinNumber = 0;
+
+//Robot obstical avoidance
+const float DISTANCE_TO_WALL_FOLLOW = 1.0;
+const float DISTANCE_TO_STEER_AWAY = 2.0;
+const float DISTANCE_FOR_FULL_SPEED = 2.5;
+float wallFollowEntrySlope;
+int wallFollowTime = 0;
+
 
 //Returns x, min, or max.  min <= output <= max
 float clamp(float min, float x, float max)
@@ -84,8 +87,7 @@ float calculateAccelerationVectorDegrees(turtlebotInputs turtlebot_inputs) //Cal
 
 bool shouldPanic(turtlebotInputs turtlebot_inputs) //Test if the robot meet the standard to run or not
 {
-	return (turtlebot_inputs.leftWheelDropped || turtlebot_inputs.rightWheelDropped || calculateAccelerationVectorDegrees(turtlebot_inputs) * 180 / (2 * M_PI) > 20.0 || turtlebot_inputs.battVoltage < -0.0 
-			|| isnan(turtlebot_inputs.orientation_omega) || isnan(turtlebot_inputs.z_angle));
+	return (turtlebot_inputs.leftWheelDropped || turtlebot_inputs.rightWheelDropped || calculateAccelerationVectorDegrees(turtlebot_inputs) * 180 / (2 * M_PI) > 20.0 || turtlebot_inputs.battVoltage < -0.0 || isnan(turtlebot_inputs.orientation_omega) || isnan(turtlebot_inputs.z_angle));
 }
 
 void transitionState(AvoidanceState newState) //Everytime this is called, the robot will change state!
