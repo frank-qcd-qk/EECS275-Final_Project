@@ -333,7 +333,7 @@ bool followWall(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, La
 		*ang_vel = -non_directional_ang_vel;
 	}
 	//check to see if we're on the other side
-	if (fabs((goalY - turtlebot_inputs.y) / (goalX - turtlebot_inputs.x) - wallFollowEntrySlope) < GOAL_POSITION_TOLERANCE && wallFollowTime > 50)
+	if (fabs((goalY - turtlebot_inputs.y) / (goalX - turtlebot_inputs.x) - wallFollowEntrySlope) < GOAL_POSITION_TOLERANCE && wallFollowTime > 50) //NO! not 50!!
 	{
 		transitionState(MOVING);
 	}
