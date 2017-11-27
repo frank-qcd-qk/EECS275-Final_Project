@@ -242,16 +242,12 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 {
 	ROS_INFO("target is %f, %f; current position is %f, %f", goalX, goalY,
 			 turtlebot_inputs.x, turtlebot_inputs.y);
-	//float robotOrientation, float currentX, float currentY, float goalX,
-	//float goalY
 	float robotX_rot = 0;
 	float robotY_rot = 0;
 	float robotZ_rot;
 	float rotationalDistanceFromGoal = calculateRotationalDistanceFromGoal(
 		turtlebot_inputs.orientation_omega, turtlebot_inputs.z_angle, turtlebot_inputs.x,
 		turtlebot_inputs.y, targetX, targetY);
-	//float currentX, float currentY, float goalX,
-	//float goalY
 	float translationalDistanceFromGoal = calculateTranslationalDistanceFromGoal(
 		turtlebot_inputs.x, turtlebot_inputs.y, targetX, targetY);
 
@@ -260,6 +256,7 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 	//*vel = clamp(.1, translationalDistanceFromGoal*.5*SPEED_MULTIPLIER, .9);
 	*ang_vel = (rotationalDistanceFromGoal > 0) ? .2 : -.2;
 
+
 	//1. if it's at the goal, stop
 	if (translationalDistanceFromGoal < GOAL_POSITION_TOLERANCE)
 	{
@@ -267,10 +264,9 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 		*ang_vel = 0;
 		return true;
 	}
-	//turningRight
 
-		//2. if it's not pointing in the right direction, rotate it
-		float ang_vel_to_goal = 0;
+	//2. if it's not pointing in the right direction, rotate it
+	float ang_vel_to_goal = 0;
 	if (fabs(rotationalDistanceFromGoal) > GOAL_ROTATION_TOLERANCE)
 	{
 		ROS_INFO("rotation is %f; tolerance is %f", rotationalDistanceFromGoal, GOAL_ROTATION_TOLERANCE);
@@ -281,18 +277,31 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 	}
 
 	//3. adjust rotational velocturningRightity for obstacles based on their proximity
-	//float ang_vel_from_obstacle = 0;
-	//if(laserData.lowest < DISTANCE_TO_STEER_AWAY)
-	//{
-	//	ang_vel_from_obstacle = .5;
-	//}
-
+	/*
+	float ang_vel_from_obstacle = 0;
+	if(laserData.lowest < DISTANCE_TO_STEER_AWAY)
+	{
+		ang_vel_from_obstacle = .5;
+	}
+	*/
+	
 	//set ang_vel to the weighted average of influences
 	float weighted_ang_vel_from_obstacle = 0; //clamp(0, ang_vel_from_obstacle/laserData.lowest, 1);
 	float weighted_ang_vel_to_goal = 1 - weighted_ang_vel_from_obstacle;
 	*ang_vel = (weighted_ang_vel_from_obstacle + weighted_ang_vel_to_goal * ang_vel_to_goal);
 
+
+
+
 	//4. if there's an obstacle in the way, wall follow it
+	/*
+	 * The logic should be if right 320 and left 320 are close, the robot knows it is facing a wall in front,
+	 * then the robot turns right
+	 * then the robot goes into the perfect wall following,
+	 * when it sees an opening, it turn toward the opening that is facing the goal
+	 * then it still follows the wall until the goal is at its right hand side perfect
+	 * detach from the wall and drive towards target
+	 */
 	if (laserData.lowest < DISTANCE_TO_WALL_FOLLOW)
 	{
 		wallFollowTime = 0;
@@ -303,6 +312,9 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 	ROS_INFO("vel: %f, ang_vel: %f", turningRight * vel, *ang_vel);
 	return false;
 }
+
+
+
 
 bool followWall(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, LaserData laserData,
 				float goalX, float goalY)
