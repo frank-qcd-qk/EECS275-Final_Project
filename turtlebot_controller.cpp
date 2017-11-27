@@ -58,6 +58,7 @@ const float DISTANCE_TO_STEER_AWAY = 2.0;
 const float DISTANCE_FOR_FULL_SPEED = 2.5;
 float wallFollowEntrySlope;
 int wallFollowTime = 0;
+int wallFollowingTimer = 0;
 
 /*
 float clamp(float min, float x, float max)//Returns x, min, or max.  min <= output <= max
@@ -309,7 +310,7 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 		transitionState(WALL_FOLLOWING);
 	}
 
-	ROS_INFO("vel: %f, ang_vel: %f", turningRight * vel, *ang_vel);
+	ROS_INFO("vel: %f, ang_vel: %f", *vel, *ang_vel);
 	return false;
 }
 
@@ -319,21 +320,28 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 bool followWall(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, LaserData laserData,
 				float goalX, float goalY)
 {
+	int wallFollowingTimerDuration = 10;
 	wallFollowTime++;
-	float non_directional_ang_vel = .5;
-	*vel = .3;
+	float non_directional_ang_vel = .6;
+	*vel = .2;
 	//if there's nothing in the way, turn back to the obstacle
-	if (laserData.lowest > DISTANCE_TO_WALL_FOLLOW)
+	if (laserData.lowest > DISTANCE_TO_WALL_FOLLOW && ++wallFollowingTimer > wallFollowingTimerDuration) //overshoots a little so it can turn corners
 	{
-		*ang_vel = non_directional_ang_vel;
+		ROS_INFO("turning towards obstacle");
+		*ang_vel = non_directional_ang_vel*.8;
 	}
 	//otherwise, turn away from it
 	else
 	{
+		if(wallFollowingTimer > wallFollowingTimerDuration)
+		{
+			wallFollowingTimer = 0;
+		}
+		ROS_INFO("turning away from obstacle");
 		*ang_vel = -non_directional_ang_vel;
 	}
 	//check to see if we're on the other side
-	if (fabs((goalY - turtlebot_inputs.y) / (goalX - turtlebot_inputs.x) - wallFollowEntrySlope) < GOAL_POSITION_TOLERANCE && wallFollowTime > 50) //NO! not 50!!
+	if (fabs((goalY - turtlebot_inputs.y) / (goalX - turtlebot_inputs.x) - wallFollowEntrySlope) < GOAL_POSITION_TOLERANCE && wallFollowTime > 50)
 	{
 		transitionState(MOVING);
 	}
@@ -398,7 +406,7 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 	case TURNING:
 		transitionOnCollision(turtlebot_inputs, BACKTRACKING);
 		*vel = 0;
-		*ang_vel = turningRight ? -ROTATION_SPEED : ROTATION_SPEED;
+		*ang_vel = -ROTATION_SPEED; //turningRight ? -ROTATION_SPEED : ROTATION_SPEED;
 		transitionOnTimeOut(turtlebot_inputs, STRAFING, TURNING_TIME);
 		break;
 
