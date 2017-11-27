@@ -267,7 +267,7 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 		*ang_vel = 0;
 		return true;
 	}
-	turningRight
+	//turningRight
 
 		//2. if it's not pointing in the right direction, rotate it
 		float ang_vel_to_goal = 0;
