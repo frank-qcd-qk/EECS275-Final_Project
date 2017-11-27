@@ -60,11 +60,12 @@ const float DISTANCE_FOR_FULL_SPEED = 2.5;
 float wallFollowEntrySlope;
 int wallFollowTime = 0;
 
-
+/*
 float clamp(float min, float x, float max)//Returns x, min, or max.  min <= output <= max
 {
 	return std::max(min, std::min(x, max));
 }
+*/
 
 float calculateAccelerationVectorDegrees(turtlebotInputs turtlebot_inputs) //Calculates the robot final acceleration vector
 {
@@ -284,7 +285,7 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 		ang_vel_from_obstacle = .5;
 	}
 	*/
-	
+
 	//set ang_vel to the weighted average of influences
 	float weighted_ang_vel_from_obstacle = 0; //clamp(0, ang_vel_from_obstacle/laserData.lowest, 1);
 	float weighted_ang_vel_to_goal = 1 - weighted_ang_vel_from_obstacle;
