@@ -17,10 +17,12 @@ enum AvoidanceState
 	WAIT = 5,
 	SPINNING = 6,
 	STRAFING = 7,
-	WALL_FOLLOWING = 8
+	WALL_FOLLOWING = 8,
+	WONDERING = 9,
 };
 
-AvoidanceState state = PANIC;
+AvoidanceState state = WONDERING;
+AvoidanceState whatToReturnTo = WONDERING;
 
 //Variable for robot steering
 bool turningRight = false;
@@ -33,6 +35,7 @@ const int BACKTRACKING_TIME = 15;
 const int TURNING_TIME = 15;
 const int FOUR_SPINS_TIMEOUT = 300;
 const int MAXIMUM_WAIT = 15;
+const int WONDER_TIME = 200;
 int timeInState = 0;
 
 //Varibale for goal seeking
@@ -40,8 +43,8 @@ bool fromGoal = false; //Define the robot is moving to or from the goal
 const float GOAL_ROTATION_TOLERANCE = .1;
 const float GOAL_POSITION_TOLERANCE = .05;
 //Goal position
-const float goalX = -5.0;
-const float goalY = 2.0;
+const float goalX = 0.0;
+const float goalY = -5.0;
 const float goalZ = 1.0;
 //the intermediate goal, either the goal position or the starting point
 float targetX = goalX;
@@ -59,6 +62,7 @@ const float DISTANCE_FOR_FULL_SPEED = 2.5;
 float wallFollowEntrySlope;
 int wallFollowTime = 0;
 int wallFollowingTimer = 0;
+float ang_vel_wandering = 0.5;
 
 /*
 float clamp(float min, float x, float max)//Returns x, min, or max.  min <= output <= max
@@ -84,6 +88,8 @@ bool shouldPanic(turtlebotInputs turtlebot_inputs) //Test if the robot meet the 
 void transitionState(AvoidanceState newState) //Everytime this is called, the robot will change state; state timer will reset
 {
 	state = newState;
+	if (newState == MOVING || newState == WALL_FOLLOWING || newState == WONDERING) //We can return to these after bumpers, etc.
+		whatToReturnTo = newState;
 	timeInState = 0;
 }
 
@@ -309,8 +315,6 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 		wallFollowEntrySlope = (goalY - turtlebot_inputs.y) / (goalX - turtlebot_inputs.x);
 		transitionState(WALL_FOLLOWING);
 	}
-
-	ROS_INFO("vel: %f, ang_vel: %f", *vel, *ang_vel);
 	return false;
 }
 
@@ -340,6 +344,7 @@ bool followWall(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, La
 		ROS_INFO("turning away from obstacle");
 		*ang_vel = -non_directional_ang_vel;
 	}
+	ROS_INFO("Current slope to goal is %f, slope that would cause us to leave is %f, wallFollowTime is %i", (goalY - turtlebot_inputs.y) / (goalX - turtlebot_inputs.x), wallFollowEntrySlope, wallFollowTime);
 	//check to see if we're on the other side
 	if (fabs((goalY - turtlebot_inputs.y) / (goalX - turtlebot_inputs.x) - wallFollowEntrySlope) < GOAL_POSITION_TOLERANCE && wallFollowTime > 50)
 	{
@@ -347,7 +352,6 @@ bool followWall(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, La
 	}
 	ROS_INFO("target is %f, %f; current position is %f, %f", goalX, goalY,
 			 turtlebot_inputs.x, turtlebot_inputs.y);
-	ROS_INFO("vel: %f, ang_vel: %f", *vel, *ang_vel);
 	return false;
 }
 
@@ -369,6 +373,20 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 
 	switch (state)
 	{
+	case WONDERING:
+		*soundValue = 3;
+		transitionOnCollision(turtlebot_inputs, BACKTRACKING);
+		
+		*vel = .1;
+		ang_vel_wandering -= .001;
+		if (ang_vel_wandering < 0) {
+			ang_vel_wandering = 0;
+			ROS_INFO("Reached minimum spiral, going straight.");
+		}
+		*ang_vel = ang_vel_wandering;
+		transitionOnTimeOut(turtlebot_inputs, PANIC, WONDER_TIME);
+		break;
+		
 	case MOVING:
 		*soundValue = 5;
 		transitionOnCollision(turtlebot_inputs, BACKTRACKING);
@@ -414,7 +432,7 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 		transitionOnCollision(turtlebot_inputs, BACKTRACKING);
 		*vel = SPEED_MULTIPLIER;
 		*ang_vel = 0;
-		transitionOnTimeOut(turtlebot_inputs, MOVING, TIMEOUTLENGTH);
+		transitionOnTimeOut(turtlebot_inputs, whatToReturnTo, TIMEOUTLENGTH);
 		break;
 
 	case WALL_FOLLOWING:
@@ -445,9 +463,10 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 		*soundValue = 2;
 		if (laserData.lowest > 0.5)
 		{
-			transitionState(MOVING);
+			transitionState(whatToReturnTo);
 		}
 		transitionOnTimeOut(turtlebot_inputs, BACKTRACKING, MAXIMUM_WAIT);
 		break;
 	}
+	ROS_INFO("vel: %f, ang_vel: %f", *vel, *ang_vel);
 }
