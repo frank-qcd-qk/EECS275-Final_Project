@@ -41,7 +41,7 @@ int timeInState = 0;
 //Varibale for goal seeking
 bool fromGoal = false; //Define the robot is moving to or from the goal
 const float GOAL_ROTATION_TOLERANCE = .1;
-const float GOAL_POSITION_TOLERANCE = .05;
+const float GOAL_POSITION_TOLERANCE = 1.0;
 //Goal position
 const float goalX = 0.0;
 const float goalY = -5.0;
@@ -60,6 +60,7 @@ const float DISTANCE_TO_WALL_FOLLOW = 1.0;
 const float DISTANCE_TO_STEER_AWAY = 2.0;
 const float DISTANCE_FOR_FULL_SPEED = 2.5;
 float wallFollowEntrySlope;
+float wallFollowEntryDistance;
 int wallFollowTime = 0;
 int wallFollowingTimer = 0;
 float ang_vel_wandering = 0.5;
@@ -259,7 +260,7 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 		turtlebot_inputs.x, turtlebot_inputs.y, targetX, targetY);
 
 	//set the velocity and base rotational velocity to move towards the goal
-	*vel = fmin(translationalDistanceFromGoal * SPEED_MULTIPLIER, .5 * SPEED_MULTIPLIER);
+	*vel = fmin(translationalDistanceFromGoal * (SPEED_MULTIPLIER * 1.5), (.5 * SPEED_MULTIPLIER) * 1.5);
 	//*vel = clamp(.1, translationalDistanceFromGoal*.5*SPEED_MULTIPLIER, .9);
 	*ang_vel = (rotationalDistanceFromGoal > 0) ? .2 : -.2;
 
@@ -313,6 +314,7 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 	{
 		wallFollowTime = 0;
 		wallFollowEntrySlope = (goalY - turtlebot_inputs.y) / (goalX - turtlebot_inputs.x);
+		wallFollowEntryDistance = calculateTranslationalDistanceFromGoal(turtlebot_inputs.x, turtlebot_inputs.y, goalX, goalY);
 		transitionState(WALL_FOLLOWING);
 	}
 	return false;
@@ -327,7 +329,11 @@ bool followWall(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, La
 	int wallFollowingTimerDuration = 10;
 	wallFollowTime++;
 	float non_directional_ang_vel = .6;
-	*vel = .2;
+	float translationalDistanceFromGoal = calculateTranslationalDistanceFromGoal(
+		turtlebot_inputs.x, turtlebot_inputs.y, targetX, targetY);
+
+	//set the velocity and base rotational velocity to move towards the goal
+	*vel = fmin(translationalDistanceFromGoal * SPEED_MULTIPLIER, .5 * SPEED_MULTIPLIER);
 	//if there's nothing in the way, turn back to the obstacle
 	if (laserData.lowest > DISTANCE_TO_WALL_FOLLOW && ++wallFollowingTimer > wallFollowingTimerDuration) //overshoots a little so it can turn corners
 	{
@@ -344,10 +350,13 @@ bool followWall(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, La
 		ROS_INFO("turning away from obstacle");
 		*ang_vel = -non_directional_ang_vel;
 	}
-	ROS_INFO("Current slope to goal is %f, slope that would cause us to leave is %f, wallFollowTime is %i", (goalY - turtlebot_inputs.y) / (goalX - turtlebot_inputs.x), wallFollowEntrySlope, wallFollowTime);
+	float distanceToGoal = calculateTranslationalDistanceFromGoal(turtlebot_inputs.x, turtlebot_inputs.y, goalX, goalY);
+	float progressMade = wallFollowEntryDistance - distanceToGoal;
+	ROS_INFO("Current slope to goal is %f, slope that would cause us to leave is %f, distance from goal is %f, ProgressMade is %f, WFED is %f", (goalY - turtlebot_inputs.y) / (goalX - turtlebot_inputs.x), wallFollowEntrySlope, distanceToGoal, progressMade, wallFollowEntryDistance);
 	//check to see if we're on the other side
-	if (fabs((goalY - turtlebot_inputs.y) / (goalX - turtlebot_inputs.x) - wallFollowEntrySlope) < GOAL_POSITION_TOLERANCE && wallFollowTime > 50)
+	if ((fabs((goalY - turtlebot_inputs.y) / (goalX - turtlebot_inputs.x) - wallFollowEntrySlope) < GOAL_POSITION_TOLERANCE) && (progressMade > 1.5))
 	{
+		ROS_INFO("Transitioning based on fabs.");
 		transitionState(MOVING);
 	}
 	ROS_INFO("target is %f, %f; current position is %f, %f", goalX, goalY,
@@ -437,12 +446,31 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 
 	case WALL_FOLLOWING:
 		transitionOnCollision(turtlebot_inputs, BACKTRACKING);
+		if (calculateTranslationalDistanceFromGoal(
+		turtlebot_inputs.x, turtlebot_inputs.y, targetX, targetY) < GOAL_POSITION_TOLERANCE)
+		{
+			*vel = 0;
+			*ang_vel = 0;
+			if(!fromGoal)
+			{
+				fromGoal = true;
+				targetX = 0;
+				targetY = 0;
+				targetZ = 0;
+				spinInitialRotation = turtlebot_inputs.orientation_omega;
+				lastRotationValue = spinInitialRotation;
+				spinNumber = 0;
+			}
+			transitionState(SPINNING);
+		}
+
 		if (laserData.lowest < .5)
 		{
 			transitionState(WAIT);
 		}
 		if (followWall(turtlebot_inputs, vel, ang_vel, laserData, targetX, targetY))
 		{
+			ROS_INFO("Transitioning based on other fuckery.");
 			transitionState(MOVING);
 		}
 		break;
