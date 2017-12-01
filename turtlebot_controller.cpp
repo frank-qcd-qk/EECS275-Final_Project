@@ -18,11 +18,15 @@ enum AvoidanceState
 AvoidanceState state = WONDERING;
 AvoidanceState whatToReturnTo = WONDERING;
 
+//save the initial position
+float initialX;
+float initialY;
+
 //Variable for robot steering
 bool turningRight = false;
-const float SPEED_MULTIPLIER = .2; //This is not used, only for identification.
-const float SM_MOVE_TO_GOAL = .2;
-const float SM_WALL_FOLLOW = .2;
+const float SPEED_MULTIPLIER = .5; //This is not used, only for identification.
+const float SM_MOVE_TO_GOAL = .3;
+const float SM_WALL_FOLLOW = .3;
 const float ROTATION_SPEED = .8;
 float ang_vel_wandering = 0.5;
 
@@ -328,7 +332,12 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 			ROS_INFO("Reached minimum spiral, going straight.");
 		}
 		*ang_vel = ang_vel_wandering;
-		transitionOnTimeOut(turtlebot_inputs, PANIC, WONDER_TIME);
+		if (timeInState++ >= WONDER_TIME)
+		{
+			initialX = turtlebot_inputs.x;
+			initialY = turtlebot_inputs.y;
+			transitionState(PANIC);
+		}
 		break;
 		
 	case MOVING:
@@ -343,8 +352,8 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 		if (moveToTarget(turtlebot_inputs, vel, ang_vel, laserData, targetX, targetY) && !fromGoal)
 		{
 			fromGoal = true;
-			targetX = 0;
-			targetY = 0;
+			targetX = initialX;
+			targetY = initialY;
 			targetZ = 0;
 			spinInitialRotation = turtlebot_inputs.orientation_omega;
 			lastRotationValue = spinInitialRotation;
