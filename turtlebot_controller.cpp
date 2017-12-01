@@ -1,12 +1,6 @@
 #include <math.h>
 #include "minimal_turtlebot/turtlebot_controller.h"
 
-//TODO: 
-/*
-1. combine testForCollision into transitionOnCollision
-2. double check FOUR_SPINS_TIMEOUT
-*/
-
 //State definitions
 enum AvoidanceState
 {
@@ -26,8 +20,11 @@ AvoidanceState whatToReturnTo = WONDERING;
 
 //Variable for robot steering
 bool turningRight = false;
-const float SPEED_MULTIPLIER = .2;
+const float SPEED_MULTIPLIER = .2; //This is not used, only for identification.
+const float SM_MOVE_TO_GOAL = .2;
+const float SM_WALL_FOLLOW = .2;
 const float ROTATION_SPEED = .8;
+float ang_vel_wandering = 0.5;
 
 //Variable for robot time control
 const int TIMEOUTLENGTH = 15;
@@ -37,12 +34,15 @@ const int FOUR_SPINS_TIMEOUT = 300;
 const int MAXIMUM_WAIT = 15;
 const int WONDER_TIME = 200;
 int timeInState = 0;
+int wallFollowTime = 0;
+int wallFollowingTimer = 0;
+
 
 //Varibale for goal seeking
 bool fromGoal = false; //Define the robot is moving to or from the goal
 const float GOAL_ROTATION_TOLERANCE = .1;
 const float GOAL_POSITION_TOLERANCE = 1.0;
-//Goal position
+//Goal position. The goal is set in the hall way.
 const float goalX = 0.0;
 const float goalY = -5.0;
 const float goalZ = 1.0;
@@ -61,16 +61,6 @@ const float DISTANCE_TO_STEER_AWAY = 2.0;
 const float DISTANCE_FOR_FULL_SPEED = 2.5;
 float wallFollowEntrySlope;
 float wallFollowEntryDistance;
-int wallFollowTime = 0;
-int wallFollowingTimer = 0;
-float ang_vel_wandering = 0.5;
-
-/*
-float clamp(float min, float x, float max)//Returns x, min, or max.  min <= output <= max
-{
-	return std::max(min, std::min(x, max));
-}
-*/
 
 float calculateAccelerationVectorDegrees(turtlebotInputs turtlebot_inputs) //Calculates the robot final acceleration vector
 {
@@ -147,12 +137,6 @@ struct LaserData laserInterpretation(turtlebotInputs turtlebot_inputs) //Laser d
 		float current = turtlebot_inputs.ranges[i];
 		if (isnan(current))
 			continue;
-		if (i<320)
-		{
-			result.rightSum += current;
-		}	else {
-			result.leftSum += current;
-		}
 		if (current < result.lowest)
 		{
 			result.lowest = current;
@@ -167,38 +151,9 @@ struct LaserData laserInterpretation(turtlebotInputs turtlebot_inputs) //Laser d
 	//Debug section
 	if (timeInState % 10 == 0)
 		ROS_INFO("Highest: %f at %u\nLowest: %f at %u", result.highest, result.highestIndex, result.lowest, result.lowestIndex);
-		ROS_INFO("Left: %f \nRight: %f",result.leftSum,result.leftSum);
 	//End Debug output
 	return result;
 }
-
-/*
-float angularVelocityIntensity(struct LaserData laserData)
-{
-	int distanceFromMiddle = abs(320 - laserData.lowestIndex);
-	int closenessToMiddle = 320 - distanceFromMiddle;
-	ROS_INFO("CLOSENESS TO MIDDLE: %u", closenessToMiddle);
-	float result = (float)closenessToMiddle / 320.0;
-	if (fabs(result) > 1) //ROS_INFO("Bug: AVI is %f", result);
-		return result;
-}
-*/
-
-/*
-void transitionOnRotations(turtlebotInputs turtlebot_inputs, AvoidanceState newState)
-{
-	float currentRotation = turtlebot_inputs.orientation_omega;
-	if (currentRotation < lastRotationValue)
-	{
-		spinNumber++;
-		if (spinNumber > 4)
-		{
-			transitionState(newState);
-		}
-	}
-	lastRotationValue = currentRotation;
-}
-*/
 
 void quaternionToZAngle(float w, float z, float &roll, float &pitch, float &yaw) //Use odometer convert angle
 {
@@ -260,8 +215,7 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 		turtlebot_inputs.x, turtlebot_inputs.y, targetX, targetY);
 
 	//set the velocity and base rotational velocity to move towards the goal
-	*vel = fmin(translationalDistanceFromGoal * (SPEED_MULTIPLIER * 1.5), (.5 * SPEED_MULTIPLIER) * 1.5);
-	//*vel = clamp(.1, translationalDistanceFromGoal*.5*SPEED_MULTIPLIER, .9);
+	*vel = fmin(translationalDistanceFromGoal * (SM_MOVE_TO_GOAL * 1.5), (.5 * SM_MOVE_TO_GOAL) * 1.5);
 	*ang_vel = (rotationalDistanceFromGoal > 0) ? .2 : -.2;
 
 
@@ -285,31 +239,12 @@ bool moveToTarget(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, 
 	}
 
 	//3. adjust rotational velocturningRightity for obstacles based on their proximity
-	/*
-	float ang_vel_from_obstacle = 0;
-	if(laserData.lowest < DISTANCE_TO_STEER_AWAY)
-	{
-		ang_vel_from_obstacle = .5;
-	}
-	*/
-
 	//set ang_vel to the weighted average of influences
 	float weighted_ang_vel_from_obstacle = 0; //clamp(0, ang_vel_from_obstacle/laserData.lowest, 1);
 	float weighted_ang_vel_to_goal = 1 - weighted_ang_vel_from_obstacle;
 	*ang_vel = (weighted_ang_vel_from_obstacle + weighted_ang_vel_to_goal * ang_vel_to_goal);
 
-
-
-
 	//4. if there's an obstacle in the way, wall follow it
-	/*
-	 * The logic should be if right 320 and left 320 are close, the robot knows it is facing a wall in front,
-	 * then the robot turns right
-	 * then the robot goes into the perfect wall following,
-	 * when it sees an opening, it turn toward the opening that is facing the goal
-	 * then it still follows the wall until the goal is at its right hand side perfect
-	 * detach from the wall and drive towards target
-	 */
 	if (laserData.lowest < DISTANCE_TO_WALL_FOLLOW)
 	{
 		wallFollowTime = 0;
@@ -333,7 +268,7 @@ bool followWall(turtlebotInputs turtlebot_inputs, float *vel, float *ang_vel, La
 		turtlebot_inputs.x, turtlebot_inputs.y, targetX, targetY);
 
 	//set the velocity and base rotational velocity to move towards the goal
-	*vel = fmin(translationalDistanceFromGoal * SPEED_MULTIPLIER, .5 * SPEED_MULTIPLIER);
+	*vel = fmin(translationalDistanceFromGoal * SM_WALL_FOLLOW, .5 * SM_WALL_FOLLOW);
 	//if there's nothing in the way, turn back to the obstacle
 	if (laserData.lowest > DISTANCE_TO_WALL_FOLLOW && ++wallFollowingTimer > wallFollowingTimerDuration) //overshoots a little so it can turn corners
 	{
@@ -439,7 +374,7 @@ void turtlebot_controller(turtlebotInputs turtlebot_inputs, uint8_t *soundValue,
 
 	case STRAFING:
 		transitionOnCollision(turtlebot_inputs, BACKTRACKING);
-		*vel = SPEED_MULTIPLIER;
+		*vel = 0.2;
 		*ang_vel = 0;
 		transitionOnTimeOut(turtlebot_inputs, whatToReturnTo, TIMEOUTLENGTH);
 		break;
