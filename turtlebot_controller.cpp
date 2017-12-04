@@ -24,9 +24,9 @@ float initialY;
 
 //Variable for robot steering
 bool turningRight = false;
-const float SPEED_MULTIPLIER = .5; //This is not used, only for identification.
-const float SM_MOVE_TO_GOAL = .3;
-const float SM_WALL_FOLLOW = .3;
+const float SPEED_MULTIPLIER = .2; //This is not used, only for identification.
+const float SM_MOVE_TO_GOAL = .2;
+const float SM_WALL_FOLLOW = .2;
 const float ROTATION_SPEED = .8;
 float ang_vel_wandering = 0.5;
 
